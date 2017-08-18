@@ -1,0 +1,23 @@
+gw:
+  addr:                  localhost    ##本门户对外IP
+  httpListenPort:        9233         ##本门户对外端口
+  dbaddr:               "103.25.23.89:60013"
+  dbname:               "dataAnalysis_new"
+  tablename:            "report_tab"
+  
+
+output:
+  prometheus:            false
+  pushGateway:           true
+  pushGatewayAddr:       "localhost:9091"
+  monitorID:             "M1"
+  period:                60 ##秒
+
+  
+relay:
+  relaynode:             {1: "210.51.168.108", 2: "114.112.74.12", 3: "175.102.21.33", 4: "175.102.8.227", 5: "122.13.78.226", 6: "125.88.254.159", 7: "125.211.202.28", 8: "222.171.242.142", 9: "123.138.91.24", 10: "124.116.176.115", 11: "221.7.112.74", 13: "220.249.119.217", 14: "61.183.245.140", 19: "103.25.23.121", 20: "103.25.23.122", 21: "223.111.205.86", 23: "223.111.205.90"}
+  histogramOptsparam:    {"start":10,"width":30,"count":4}
+  summaryOptsparam:      {0: 0.05, 0.5: 0.03, 0.9: 0.01, 1: 0.01}
+ 
+
+  
