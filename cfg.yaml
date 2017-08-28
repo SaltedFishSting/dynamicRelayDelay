@@ -7,8 +7,8 @@ gw:
   
 
 output:
-  prometheus:            false
-  pushGateway:           true
+  prometheus:            true
+  pushGateway:           false
   pushGatewayAddr:       "localhost:9091"
   monitorID:             "M1"
   period:                60 ##秒
