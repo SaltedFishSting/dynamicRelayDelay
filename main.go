@@ -92,13 +92,13 @@ func Observe(id string, ip string, direction string, delay float64) {
 func Observeloss(id string, ip string, direction string, aloss float64, vloss float64) {
 	intid, _ := strconv.ParseInt(id, 10, 64)
 	if ip == relayidMap[intid] {
-		if aloss < 2000 && aloss >= 0 {
+		if aloss < 1000 && aloss >= 0 {
 			nodehlosspackage.WithLabelValues(id, ip, direction, "audio").Observe(aloss)
 			nodeslosspackage.WithLabelValues(id, ip, direction, "audio").Observe(aloss)
 		} else {
 			fmt.Println(aloss)
 		}
-		if vloss < 10000 && vloss >= 0 {
+		if vloss < 1000 && vloss >= 0 {
 			nodehlosspackage.WithLabelValues(id, ip, direction, "video").Observe(vloss)
 			nodeslosspackage.WithLabelValues(id, ip, direction, "video").Observe(vloss)
 		} else {
@@ -115,13 +115,13 @@ func Observee2edelay(strtype string, delay float64) {
 
 //端到端丢包
 func Observee2eloss(strtype string, aloss float64, vloss float64) {
-	if aloss < 2000 && aloss >= 0 {
+	if aloss < 1000 && aloss >= 0 {
 		nodehe2eLoss.WithLabelValues(strtype, "audio").Observe(aloss)
 		nodese2eLoss.WithLabelValues(strtype, "audio").Observe(aloss)
 	} else {
 		fmt.Println(aloss)
 	}
-	if vloss < 10000 && vloss >= 0 {
+	if vloss < 1000 && vloss >= 0 {
 		nodehe2eLoss.WithLabelValues(strtype, "video").Observe(vloss)
 		nodese2eLoss.WithLabelValues(strtype, "video").Observe(vloss)
 	} else {
@@ -153,8 +153,8 @@ func mongodbToBaselog(ip string, db string, table string) []BaseLog {
 	}
 	var BaseLogresult []BaseLog
 
-	//通过sid获取callBaseLog日志
-	err = collection.Find(bson.M{"insertTime": bson.M{"$gt": min10time, "$lt": nowtime.InsertTime}, "callBaseLog": bson.M{"$exists": true}}).Select(bson.M{"callBaseLog": 1, "sid": 1}).All(&BaseLogresult)
+	//通过insertTime获取callBaseLog日志
+	err = collection.Find(bson.M{"insertTime": bson.M{"$gte": min10time, "$lt": nowtime.InsertTime}, "callBaseLog": bson.M{"$exists": true}}).Select(bson.M{"callBaseLog": 1, "sid": 1}).All(&BaseLogresult)
 	if err != nil {
 		panic(err)
 	}
@@ -162,6 +162,7 @@ func mongodbToBaselog(ip string, db string, table string) []BaseLog {
 
 }
 func toPromtheus(BaseLogresult []BaseLog) {
+	//数据按sid分组
 	sidgroup := make(map[string]list.List)
 	for _, result := range BaseLogresult {
 		if a := sidgroup[result.Sid]; a.Len() == 0 {
@@ -178,7 +179,7 @@ func toPromtheus(BaseLogresult []BaseLog) {
 			}
 		}
 	}
-
+	//按sid分组后再按cid分组
 	for sid, result := range sidgroup {
 		cidgroup := make(map[string]list.List)
 		for e := result.Front(); e != nil; e = e.Next() {
@@ -200,7 +201,7 @@ func toPromtheus(BaseLogresult []BaseLog) {
 							}
 
 						}
-						//****
+						//去除延迟大于20000的数据
 						if d, _ := strconv.ParseFloat(smap["delay_aver"], 64); d > 20000 {
 							continue
 						}
@@ -218,12 +219,13 @@ func toPromtheus(BaseLogresult []BaseLog) {
 				}
 			}
 		}
+		//遍历按sid和cid分组的数据并按照logIndex排序放入对应的map数组中
 		for _, v := range cidgroup {
-			var e2eloss [500]map[string]float64
-			var CLUloss [500]map[string]string
-			var CRDloss [500]map[string]string
-			var CRUloss [500]map[string]string
-			var CLDloss [500]map[string]string
+			e2eloss := make([]map[string]float64, 500)
+			CLUloss := make([]map[string]string, 500)
+			CRDloss := make([]map[string]string, 500)
+			CRUloss := make([]map[string]string, 500)
+			CLDloss := make([]map[string]string, 500)
 			for e := v.Front(); e != nil; e = e.Next() {
 				if e.Value == nil {
 					continue
@@ -239,13 +241,23 @@ func toPromtheus(BaseLogresult []BaseLog) {
 						if ipidlogindex[1] != "-1" {
 							Observe(ipidlogindex[1], ipidlogindex[0], "Down", a)
 						}
-						if index < 500 {
+						if index < len(CLUloss) {
 							maploss := make(map[string]string)
 							maploss["audio"] = smap["a_loss"]
 							maploss["video"] = smap["v_loss"]
 							maploss["id"] = ipidlogindex[1]
 							maploss["ip"] = ipidlogindex[0]
 							CLUloss[index] = maploss
+						} else {
+							maploss := make(map[string]string)
+							maploss["audio"] = smap["a_loss"]
+							maploss["video"] = smap["v_loss"]
+							maploss["id"] = ipidlogindex[1]
+							maploss["ip"] = ipidlogindex[0]
+							array := make([]map[string]string, index+100)
+							copy(array, CLUloss)
+							array[index] = maploss
+							CLUloss = array
 						}
 					}
 
@@ -260,13 +272,23 @@ func toPromtheus(BaseLogresult []BaseLog) {
 						if ipidlogindex[1] != "-1" {
 							Observe(ipidlogindex[1], ipidlogindex[0], "Up", a)
 						}
-						if index < 500 {
+						if index < len(CRDloss) {
 							maploss := make(map[string]string)
 							maploss["audio"] = smap["a_loss"]
 							maploss["video"] = smap["v_loss"]
 							maploss["id"] = ipidlogindex[1]
 							maploss["ip"] = ipidlogindex[0]
 							CRDloss[index] = maploss
+						} else {
+							maploss := make(map[string]string)
+							maploss["audio"] = smap["a_loss"]
+							maploss["video"] = smap["v_loss"]
+							maploss["id"] = ipidlogindex[1]
+							maploss["ip"] = ipidlogindex[0]
+							array := make([]map[string]string, index+100)
+							copy(array, CLUloss)
+							array[index] = maploss
+							CRDloss = array
 						}
 					}
 
@@ -281,13 +303,23 @@ func toPromtheus(BaseLogresult []BaseLog) {
 						if ipidlogindex[1] != "-1" {
 							Observe(ipidlogindex[1], ipidlogindex[0], "Down", a)
 						}
-						if index < 500 {
+						if index < len(CRUloss) {
 							maploss := make(map[string]string)
 							maploss["audio"] = smap["a_loss"]
 							maploss["video"] = smap["v_loss"]
 							maploss["id"] = ipidlogindex[1]
 							maploss["ip"] = ipidlogindex[0]
 							CRUloss[index] = maploss
+						} else {
+							maploss := make(map[string]string)
+							maploss["audio"] = smap["a_loss"]
+							maploss["video"] = smap["v_loss"]
+							maploss["id"] = ipidlogindex[1]
+							maploss["ip"] = ipidlogindex[0]
+							array := make([]map[string]string, index+100)
+							copy(array, CLUloss)
+							array[index] = maploss
+							CRUloss = array
 						}
 					}
 
@@ -303,13 +335,23 @@ func toPromtheus(BaseLogresult []BaseLog) {
 						if ipidlogindex[1] != "-1" {
 							Observe(ipidlogindex[1], ipidlogindex[0], "Up", a)
 						}
-						if index < 500 {
+						if index < len(CLDloss) {
 							maploss := make(map[string]string)
 							maploss["audio"] = smap["a_loss"]
 							maploss["video"] = smap["v_loss"]
 							maploss["id"] = ipidlogindex[1]
 							maploss["ip"] = ipidlogindex[0]
 							CLDloss[index] = maploss
+						} else {
+							maploss := make(map[string]string)
+							maploss["audio"] = smap["a_loss"]
+							maploss["video"] = smap["v_loss"]
+							maploss["id"] = ipidlogindex[1]
+							maploss["ip"] = ipidlogindex[0]
+							array := make([]map[string]string, index+100)
+							copy(array, CLUloss)
+							array[index] = maploss
+							CLDloss = array
 						}
 					}
 				case "CE2E_L2R":
@@ -338,6 +380,7 @@ func toPromtheus(BaseLogresult []BaseLog) {
 				}
 
 			}
+			//分别遍历map数组获取各项的差值,推送给prometheus
 			acmap := make(map[string]float64)
 			for _, v := range e2eloss {
 				if v != nil {
